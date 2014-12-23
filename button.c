@@ -17,12 +17,19 @@
 static struct class *button_class ;
 static volatile char ev_press = 0;
 static DECLARE_WAIT_QUEUE_HEAD(button_wait_queue);
+static struct fasync_struct *button_fasync;  
 
 static irqreturn_t button_handler (int irq, void *dev_id) 
 { 
     printk("the irq number is: %d\n",irq); 
     ev_press = 1; 
-    wake_up_interruptible(&button_wait_queue); 
+    wake_up_interruptible(&button_wait_queue);
+	/* 鐢╧ill_fasync鍑芥暟鍛婅瘔搴旂敤绋嬪簭锛屾湁鏁版嵁鍙浜? 
+    * button_fasync缁撴瀯浣撻噷鍖呭惈浜嗗彂缁欒皝(PID鎸囧畾) 
+    * SIGIO琛ㄧず瑕佸彂閫佺殑淇″彿绫诲瀷 
+    * POLL_IN琛ㄧず鍙戦€佺殑鍘熷洜(鏈夋暟鎹彲璇讳簡) 
+    */  
+	kill_fasync( &button_fasync , SIGIO , POLL_IN); 
     return IRQ_HANDLED; 
 } 
 
@@ -30,7 +37,7 @@ static irqreturn_t button_handler (int irq, void *dev_id)
 static ssize_t button_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {	
 	ssize_t status ;
-	unsigned char data[BUF_SIZE] = {"RaspberryPi"};
+	unsigned char data[] = {"RaspberryPi"};
 	printk("Now entering %s() \n", __FUNCTION__ );
 	wait_event_interruptible(button_wait_queue, ev_press);
 	status = copy_to_user(user_buf,data,count);
@@ -74,6 +81,12 @@ static unsigned int button_poll(struct file *file , struct poll_table_struct *wa
 	return mask ; 
 }
 
+static int _button_fasync(int fd , struct file *file , int on)
+{
+	return fasync_helper(fd, file, on, &button_fasync);
+}
+
+
 struct file_operations button_ops = {
 	.owner = THIS_MODULE ,
 	.open = button_open ,
@@ -81,6 +94,7 @@ struct file_operations button_ops = {
 	.write = button_write ,
 	.read = button_read ,
 	.poll = button_poll ,
+	.fasync = _button_fasync ,
 };
 
 static int __init button_init(void){
@@ -115,5 +129,5 @@ module_exit(button_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("hubuyu");
-MODULE_DESCRIPTION("Lesson 8-1 : gpio-key button interrupt ");
+MODULE_DESCRIPTION("Lesson 8-5 : gpio-key button interrupt by asynchronous");
 
